@@ -1,14 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mappingConfig } from "../services/mapping/config.mjs";
+import { mappingConfig } from "../backend/mapping/config.mjs";
 import {
   analyzeRepository,
   validateEnrichment,
   toMermaid,
-} from "../services/mapping/analyzer.mjs";
-import { validateFiles, eligibleFile } from "../services/mapping/policy.mjs";
-import { validateGitUrl } from "../services/mapping/git-reader.mjs";
-import { processMapJob } from "../services/mapping/worker.mjs";
+} from "../backend/mapping/analyzer.mjs";
+import { validateFiles, eligibleFile } from "../backend/mapping/policy.mjs";
+import { validateGitUrl } from "../backend/mapping/git-reader.mjs";
+import { processMapJob } from "../backend/mapping/worker.mjs";
 const policy = mappingConfig();
 import { fixture } from "./fixtures/repository.mjs";
 test("static map extracts configured topology, package relationships, source evidence and stable Mermaid", () => {
@@ -116,7 +116,12 @@ test("AI enrichment validates existing nodes and cannot replace the static graph
     JSON.stringify({
       summary: "Review recovery behavior",
       suggestions: [
-        { from, to, reason: "Possible request path; verify tracing" },
+        {
+          from,
+          to,
+          reason: "Possible request path; verify tracing",
+          evidence: [graph.nodes[0].evidence[0]],
+        },
       ],
     }),
     graph,
@@ -168,6 +173,116 @@ test("worker completion stores the map and clears input with a fencing token; fa
     },
     { db, token: "lease-token" },
   );
-  assert.match(calls[0].sql, /status='failed'/);
+  assert.match(calls[0].sql, /status=CASE WHEN result IS NULL THEN 'failed' ELSE 'completed' END/);
   assert.match(calls[0].sql, /input=NULL/);
+});
+
+test("Kubernetes resolves selector-backed endpoints and excludes shared but unused endpoints and alternate deployments", () => {
+  const files = [
+    {
+      path: "kubernetes-manifests/config.yaml",
+      content:
+        "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: endpoints\ndata:\n  DB_ADDR: db:5432\n  UNUSED_ADDR: unused:8080\n  PASSWORD: SECRET_VALUE\n",
+    },
+    ...["api", "db", "unused"].map((name) => ({
+      path: `kubernetes-manifests/${name}.yaml`,
+      content: `apiVersion: v1\nkind: Service\nmetadata:\n  name: ${name}\nspec:\n  selector:\n    app: ${name}\n---\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: ${name}\nspec:\n  template:\n    metadata:\n      labels:\n        app: ${name}\n    spec:\n      containers:\n      - name: main\n        image: registry/${name}:latest\n        envFrom:\n        - configMapRef:\n            name: endpoints\n`,
+    })),
+    {
+      path: "src/api/skaffold.yaml",
+      content:
+        "apiVersion: skaffold/v4beta1\nkind: Config\nbuild:\n  artifacts:\n  - image: api\n    context: ../..\n    jib:\n      project: src/api\n",
+    },
+    {
+      path: "src/api/main.py",
+      content: "import os\nhost = os.environ.get('DB_ADDR')\n",
+    },
+    {
+      path: "extras/other.yaml",
+      content:
+        "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: alternate\nspec: {}\n",
+    },
+    { path: "extras/requirements.txt", content: "flask\n" },
+  ];
+  const graph = analyzeRepository(files, policy);
+  const names = new Map(graph.nodes.map((n) => [n.id, n.label]));
+  assert.deepEqual(graph.nodes.map((n) => n.label).sort(), [
+    "api",
+    "db",
+    "unused",
+  ]);
+  assert.equal(graph.edges.length, 1);
+  assert.equal(names.get(graph.edges[0].from), "api");
+  assert.equal(names.get(graph.edges[0].to), "db");
+  assert.equal(graph.edges[0].evidence[1].path, "src/api/main.py");
+  assert.equal(graph.edges[0].evidence[1].line, 2);
+  assert.equal(graph.nodes.find((n) => n.label === "db").kind, "database");
+  assert.equal(
+    graph.mermaid,
+    analyzeRepository([...files].reverse(), policy).mermaid,
+  );
+  assert.ok(!JSON.stringify(graph).includes("SECRET_VALUE"));
+  const [from, to] = graph.nodes
+    .filter((n) => n.label !== "api")
+    .map((n) => n.id);
+  assert.throws(
+    () =>
+      validateEnrichment(
+        JSON.stringify({
+          summary: "Unknown",
+          suggestions: [
+            {
+              from,
+              to,
+              reason: "guess",
+              evidence: [{ path: "fabricated.py", line: 1 }],
+            },
+          ],
+        }),
+        graph,
+      ),
+    /cite existing/,
+  );
+});
+
+test("Kubernetes namespace boundaries and ambiguous selectors do not produce guessed connections", () => {
+  const workload = (name, namespace, app, env = "") =>
+    `apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: ${name}\n  namespace: ${namespace}\nspec:\n  template:\n    metadata:\n      labels:\n        app: ${app}\n    spec:\n      containers:\n      - name: main\n        image: ${name}\n${env}`;
+  const service = (namespace) =>
+    `apiVersion: v1\nkind: Service\nmetadata:\n  name: target\n  namespace: ${namespace}\nspec:\n  selector:\n    app: shared\n`;
+  const files = [
+    {
+      path: "kubernetes-manifests/client.yaml",
+      content: workload(
+        "client",
+        "a",
+        "client",
+        "        env:\n        - name: API_ADDR\n          value: target.b.svc.cluster.local:8080\n",
+      ),
+    },
+    {
+      path: "kubernetes-manifests/a.yaml",
+      content: service("a") + "---\n" + workload("local", "a", "shared"),
+    },
+    {
+      path: "kubernetes-manifests/b.yaml",
+      content: service("b") + "---\n" + workload("remote", "b", "shared"),
+    },
+  ];
+  const graph = analyzeRepository(files, policy);
+  const names = new Map(graph.nodes.map((n) => [n.id, n.label]));
+  assert.equal(graph.edges.length, 1);
+  assert.equal(names.get(graph.edges[0].to), "remote");
+  const ambiguous = analyzeRepository(
+    [
+      ...files,
+      {
+        path: "kubernetes-manifests/duplicate.yaml",
+        content: workload("duplicate", "b", "shared"),
+      },
+    ],
+    policy,
+  );
+  assert.equal(ambiguous.edges.length, 0);
+  assert.ok(ambiguous.warnings.some((w) => w.includes("2 matching workloads")));
 });

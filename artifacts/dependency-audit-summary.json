@@ -1,0 +1,23 @@
+{
+  "checkedOn": "2026-10-03",
+  "production": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 0,
+    "critical": 0,
+    "total": 0
+  },
+  "developmentOnly": {
+    "count": 5,
+    "severity": "high",
+    "chain": [
+      "eslint-config-next",
+      "@next/eslint-plugin-next",
+      "fast-glob",
+      "micromatch",
+      "braces"
+    ],
+    "note": "No compatible fix was reported; forced downgrade of Next lint configuration was avoided."
+  }
+}

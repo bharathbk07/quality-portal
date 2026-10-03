@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
-import { value, number } from "../services/shared/config.mjs";
+import { value, number } from "../backend/shared/config.mjs";
 import { fixture } from "../tests/fixtures/repository.mjs";
 const env = Object.fromEntries(
   readFileSync(".env", "utf8")
@@ -16,11 +16,11 @@ const base = value("services", "bff_url");
 const login = await fetch(base + "/api/session", {
   method: "POST",
   headers: { "Content-Type": "application/json", origin: base },
-  body: JSON.stringify({ password: env.ADMIN_PASSWORD }),
+  body: JSON.stringify({ username:env.SUPER_ADMIN_USERNAME||value('identity','bootstrap_admin_username'),password:env.SUPER_ADMIN_PASSWORD||env.ADMIN_PASSWORD }),
 });
 assert.equal(login.status, 200);
 const cookie = login.headers.get("set-cookie").split(";")[0];
-const headers = { cookie, "Content-Type": "application/json", origin: base };
+const headers = { cookie, "x-csrf-token":(await login.json()).csrfToken, "Content-Type": "application/json", origin: base };
 async function submit(source, name) {
   const response = await fetch(base + "/api/maps", {
     method: "POST",

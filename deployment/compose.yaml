@@ -1,0 +1,155 @@
+name: vivegam-quality-lab
+x-service: &service
+  build: {context: ., target: service, dockerfile: deployment/docker/node.Dockerfile}
+  restart: unless-stopped
+  init: true
+  read_only: true
+  tmpfs: [/tmp]
+  volumes: [./deployment/configuration.ini:/app/deployment/configuration.ini:ro, ./prompts:/app/prompts:ro]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+services:
+  gateway:
+    container_name: ${CONTAINER_NAME_PREFIX:-vivegam}-edge-gateway
+    labels:
+      org.opencontainers.image.title: edge-gateway
+      org.opencontainers.image.description: Reverse proxy and isolated public entry point
+    image: traefik:v3.6
+    command: [--entrypoints.web.address=:8080, --providers.file.filename=/etc/traefik/routes.yml, --accesslog=true, --log.level=INFO]
+    ports: ["127.0.0.1:${GATEWAY_PORT:?Set GATEWAY_PORT in .env}:8080"]
+    volumes: [./deployment/infrastructure/gateway/routes.yml:/etc/traefik/routes.yml:ro]
+    networks: [edge]
+    depends_on: [frontend, bff]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+  frontend:
+    container_name: ${CONTAINER_NAME_PREFIX:-vivegam}-web-experience
+    labels:
+      org.opencontainers.image.title: web-experience
+      org.opencontainers.image.description: Enterprise web experience; no database access
+    build: {context: ., target: frontend, dockerfile: deployment/docker/node.Dockerfile}
+    volumes: [./deployment/configuration.ini:/app/deployment/configuration.ini:ro, ./prompts:/app/prompts:ro]
+    environment: {BFF_URL: "http://bff:4001", HOSTNAME: "0.0.0.0", PORT: "3000"}
+    networks: [edge]
+    restart: unless-stopped
+    cap_drop: [ALL]
+  bff:
+    container_name: ${CONTAINER_NAME_PREFIX:-vivegam}-workspace-bff
+    labels:
+      org.opencontainers.image.title: workspace-bff
+      org.opencontainers.image.description: Session, CSRF and workspace API boundary
+    <<: *service
+    command: [node, middleware/bff/index.mjs]
+    environment:
+      PORT: 4001
+      CORE_URL: http://core:4002
+      SERVICE_TOKEN: ${SERVICE_TOKEN:?Run npm run setup:local}
+      SESSION_SECRET: ${SESSION_SECRET:?Run npm run setup:local}
+      PUBLIC_ORIGINS: ${PUBLIC_ORIGINS:?Set PUBLIC_ORIGINS in .env}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      AUTH_PUBLIC_URL: ${AUTH_PUBLIC_URL:-http://127.0.0.1:8088}
+    networks: [edge, backend]
+    depends_on: {core: {condition: service_healthy}}
+  core:
+    container_name: ${CONTAINER_NAME_PREFIX:-vivegam}-platform-api
+    labels:
+      org.opencontainers.image.title: platform-api
+      org.opencontainers.image.description: Business rules, authorization and encrypted persistence
+    <<: *service
+    command: [node, backend/core/index.mjs]
+    environment:
+      PORT: 4002
+      INTEGRATION_URL: http://integration:4003
+      SERVICE_TOKEN: ${SERVICE_TOKEN}
+      DATABASE_URL: postgres://vivegam:${POSTGRES_PASSWORD}@postgres:5432/vivegam
+      REDIS_URL: redis://redis:6379
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:?Run npm run setup:local}
+      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD:-${ADMIN_PASSWORD:-}}
+      BOOTSTRAP_ADMIN_USERNAME: ${SUPER_ADMIN_USERNAME:-}
+      AUTH_PUBLIC_URL: ${AUTH_PUBLIC_URL:-http://127.0.0.1:8088}
+    networks: [backend, data, egress]
+    depends_on: {postgres: {condition: service_healthy}, redis: {condition: service_healthy}, integration: {condition: service_started}}
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://localhost:4002/health/ready',{headers:{'x-service-token':process.env.SERVICE_TOKEN}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  integration:
+    container_name: ${CONTAINER_NAME_PREFIX:-vivegam}-tool-adapters
+    labels:
+      org.opencontainers.image.title: tool-adapters
+      org.opencontainers.image.description: Repository and testing-tool integration adapters
+    <<: *service
+    command: [node, backend/adapters/integration/index.mjs]
+    environment:
+      PORT: 4003
+      SERVICE_TOKEN: ${SERVICE_TOKEN}
+    tmpfs: ["/tmp:size=${REPOSITORY_TMPFS_SIZE:-128m}"]
+    networks: [backend, egress]
+  ai:
+    container_name: ${CONTAINER_NAME_PREFIX:-vivegam}-ai-provider-gateway
+    labels:
+      org.opencontainers.image.title: ai-provider-gateway
+      org.opencontainers.image.description: Python provider SDKs and AI tracing
+    build: {context: ., dockerfile: deployment/docker/ai.Dockerfile}
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs: [/tmp]
+    volumes: [./deployment/configuration.ini:/app/deployment/configuration.ini:ro, ./prompts:/app/prompts:ro]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [backend, egress]
+    environment:
+      SERVICE_TOKEN: ${SERVICE_TOKEN}
+  map-worker:
+    container_name: ${CONTAINER_NAME_PREFIX:-vivegam}-architecture-discovery
+    labels:
+      org.opencontainers.image.title: architecture-discovery
+      org.opencontainers.image.description: Background repository architecture discovery
+    <<: *service
+    command: [node, backend/mapping/index.mjs]
+    environment:
+      SERVICE_TOKEN: ${SERVICE_TOKEN}
+      DATABASE_URL: postgres://vivegam:${POSTGRES_PASSWORD}@postgres:5432/vivegam
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:?Run npm run setup:local}
+      INTEGRATION_URL: http://integration:4003
+    networks: [backend, data]
+    depends_on: {core: {condition: service_healthy}, postgres: {condition: service_healthy}, integration: {condition: service_started}}
+  postgres:
+    container_name: ${CONTAINER_NAME_PREFIX:-vivegam}-platform-database
+    labels:
+      org.opencontainers.image.title: platform-database
+      org.opencontainers.image.description: Workspace data and encrypted settings storage
+    image: postgres:17-alpine
+    environment: {POSTGRES_USER: vivegam, POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Run npm run setup:local}", POSTGRES_DB: vivegam}
+    volumes: [postgres-data:/var/lib/postgresql/data, ./deployment/infrastructure/postgres/001-init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro]
+    networks: [data]
+    healthcheck: {test: [CMD-SHELL, "pg_isready -U vivegam"], interval: 5s, timeout: 3s, retries: 10}
+  redis:
+    container_name: ${CONTAINER_NAME_PREFIX:-vivegam}-platform-cache
+    labels:
+      org.opencontainers.image.title: platform-cache
+      org.opencontainers.image.description: Session and workload coordination cache
+    image: redis:7.4-alpine
+    command: [redis-server, --appendonly, "yes"]
+    volumes: [redis-data:/data]
+    networks: [data]
+    healthcheck: {test: [CMD, redis-cli, ping], interval: 5s, timeout: 3s, retries: 10}
+  prometheus:
+    container_name: ${CONTAINER_NAME_PREFIX:-vivegam}-platform-metrics
+    labels:
+      org.opencontainers.image.title: platform-metrics
+      org.opencontainers.image.description: Service health and metrics collection
+    image: prom/prometheus:v3.5.0
+    volumes: [./deployment/infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro, prometheus-data:/prometheus]
+    networks: [backend]
+volumes:
+  postgres-data:
+  redis-data:
+  prometheus-data:
+networks:
+  edge:
+  backend: {internal: true}
+  data: {internal: true}
+  egress:

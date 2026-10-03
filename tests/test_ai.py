@@ -6,11 +6,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'services/ai'))
-from config import Settings
-from providers import Providers, ProviderError
-from monitoring import Monitoring
-from main import build_app
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'backend/ai/src'))
+from vivegam_ai.config.settings import Settings
+from vivegam_ai.adapters.providers import Providers, ProviderError
+from vivegam_ai.observability.monitoring import Monitoring
+from vivegam_ai.main import build_app
 from fastapi.testclient import TestClient
 
 
@@ -78,6 +78,33 @@ class AITests(unittest.TestCase):
         Handler.requests.clear()
         Handler.fail = False
 
+    def test_runtime_context_isolated_across_concurrent_workspaces(self):
+        from contextvars import copy_context
+        from concurrent.futures import ThreadPoolExecutor
+        s = self.settings()
+        s.runtime = {'OPENAI_API_KEY': 'workspace-A'}
+        s.workspace.set('A')
+        context_a = copy_context()
+        s.runtime = {'OPENAI_API_KEY': 'workspace-B'}
+        s.workspace.set('B')
+        context_b = copy_context()
+        def read():
+            return s.workspace.get(), s.secret('OPENAI_API_KEY')
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            a = pool.submit(context_a.run, read)
+            b = pool.submit(context_b.run, read)
+            self.assertEqual(a.result(), ('A', 'workspace-A'))
+            self.assertEqual(b.result(), ('B', 'workspace-B'))
+        self.assertEqual(read(), ('B', 'workspace-B'))
+
+    def test_egress_rejects_unapproved_and_insecure_destinations(self):
+        from vivegam_ai.security.egress import validate_egress
+        s = self.settings()
+        for url in ['http://169.254.169.254/latest/meta-data', 'https://unapproved.example', 'http://api.openai.com/v1', 'https://user:password@api.openai.com']:
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                validate_egress(url, s)
+        self.assertEqual(validate_egress('https://api.openai.com/v1', s), 'https://api.openai.com/v1')
+
     def test_direct_sdks_native_payloads_and_usage(self):
         for name in ['openai','google','claude','lmstudio','ollama','compatible']:
             with self.subTest(provider=name):
@@ -114,7 +141,7 @@ class AITests(unittest.TestCase):
         monitor = Monitoring(s)
         with TestClient(build_app(s,monitoring=monitor), raise_server_exceptions=False) as client:
             self.assertEqual(client.get('/ai/status').status_code,401)
-            headers={'x-service-token':'internal-test-token'}
+            headers={'x-service-token':'internal-test-token','x-workspace-id':'00000000-0000-4000-8000-000000000001'}
             self.assertNotIn('server-only-secret',client.get('/ai/status',headers=headers).text)
             self.assertEqual(client.post('/ai/generate',headers=headers,json={'prompt':'test'}).status_code,400)
             self.assertEqual(client.post('/ai/generate',headers=headers,json={'prompt':'x','context':'','provider':'unknown'}).status_code,400)
@@ -131,7 +158,7 @@ class AITests(unittest.TestCase):
                 monitor=Monitoring(s)
                 client=MagicMock()
                 if fail: client.create_run.side_effect=RuntimeError('offline')
-                with patch('monitoring.Client',return_value=client):
+                with patch('vivegam_ai.observability.monitoring.Client',return_value=client):
                     output=monitor.invoke('google','test-model',{'prompt':'sensitive'},lambda:{'content':'private output','usage':{'input_tokens':7}},'request-123')
                     monitor.close()
                 self.assertTrue(output['traceId'])
@@ -140,6 +167,36 @@ class AITests(unittest.TestCase):
                 self.assertEqual(args['extra']['metadata']['usage']['input_tokens'],7)
                 self.assertEqual(monitor.last_trace['status'],'failed' if fail else 'delivered')
                 if not fail:self.assertTrue(client.update_run.call_args.kwargs['outputs']['redacted'])
+
+    def test_content_capture_preserves_messages_response_and_correlation_with_redaction(self):
+        s=self.settings(LANGSMITH_TRACING='true',LANGSMITH_API_KEY='trace-secret',LANGSMITH_CAPTURE_CONTENT='true')
+        monitor=Monitoring(s); client=MagicMock()
+        inputs={'prompt':'architecture question','context':'public repository', 'messages':[{'role':'system','content':'review evidence'},{'role':'user','content':'email private@example.com password=topsecret'}]}
+        with patch('vivegam_ai.observability.monitoring.Client',return_value=client):
+            result=monitor.invoke('google','configured-model',inputs,lambda:{'content':'Exact model answer','usage':{'input_tokens':7,'output_tokens':3}},'correlation-123')
+            monitor.close()
+        created=client.create_run.call_args.kwargs
+        updated=client.update_run.call_args.kwargs
+        self.assertEqual(created['extra']['metadata']['request_id'],'correlation-123')
+        self.assertEqual(str(created['trace_id']), result['traceId'])
+        self.assertEqual(created['inputs']['prompt'],'architecture question')
+        self.assertNotIn('private@example.com',json.dumps(created['inputs']))
+        self.assertNotIn('topsecret',json.dumps(created['inputs']))
+        self.assertEqual(updated['outputs']['content'],'Exact model answer')
+        self.assertEqual(updated['outputs']['usage_metadata']['total_tokens'],10)
+        self.assertEqual(monitor.last_trace['requestId'],'correlation-123')
+        self.assertTrue(created['extra']['metadata']['content_capture'])
+        self.assertEqual(created['tags'],['vivegam','google','content-captured'])
+
+    def test_older_trace_completion_does_not_replace_latest_request(self):
+        from uuid import uuid4
+        s=self.settings();monitor=Monitoring(s)
+        older,newer=uuid4(),uuid4()
+        monitor.traces[s.workspace.get()]={'id':str(newer),'status':'queued','requestId':'newer'}
+        monitor.complete({'id':older},'delivered')
+        self.assertEqual(monitor.last_trace['id'],str(newer))
+        self.assertEqual(monitor.last_trace['status'],'queued')
+        monitor.close()
 
     def test_real_langsmith_sdk_http_delivery(self):
         s=self.settings(LANGSMITH_TRACING='true',LANGSMITH_API_KEY='trace-secret',LANGSMITH_ENDPOINT=self.base)
@@ -156,13 +213,13 @@ class AITests(unittest.TestCase):
     def test_runtime_settings_refresh_supersedes_optional_environment(self):
         s=Settings(env={'SERVICE_TOKEN':'internal-test-token','OPENAI_API_KEY':'legacy-secret'})
         response=MagicMock();response.json.return_value={'values':{'OPENAI_API_KEY':'saved-secret','OPENAI_MODEL':'db-model','OPENAI_BASE_URL':'http://local.example/v1'}}
-        with patch('config.httpx.Client') as client:
+        with patch('vivegam_ai.config.settings.httpx.Client') as client:
             client.return_value.__enter__.return_value.get.return_value=response
             s.refresh()
         self.assertEqual(s.secret('OPENAI_API_KEY'),'saved-secret')
         self.assertEqual(s.get('ai_openai','openai_model'),'db-model')
         response.json.return_value={'values':{'OPENAI_API_KEY':''}}
-        with patch('config.httpx.Client') as client:
+        with patch('vivegam_ai.config.settings.httpx.Client') as client:
             client.return_value.__enter__.return_value.get.return_value=response
             s.refresh()
         self.assertEqual(s.secret('OPENAI_API_KEY'),'')
@@ -171,7 +228,7 @@ class AITests(unittest.TestCase):
         s=self.settings(LANGSMITH_TRACING='true',LANGSMITH_API_KEY='trace-secret',LANGSMITH_CAPTURE_CONTENT='true')
         monitor=Monitoring(s);client=MagicMock()
         def fail():raise RuntimeError('secret provider response')
-        with patch('monitoring.Client',return_value=client):
+        with patch('vivegam_ai.observability.monitoring.Client',return_value=client):
             with self.assertRaises(RuntimeError):monitor.invoke('claude','model',{'prompt':'test'},fail,'request')
             monitor.close()
         self.assertEqual(client.update_run.call_args.kwargs['error'],'RuntimeError')
@@ -185,7 +242,7 @@ class AITests(unittest.TestCase):
         agent.send.return_value=run
         run.wait.return_value.id='run-test';run.wait.return_value.status='finished';run.wait.return_value.result='Analysis'
         agent.agent_id='bc-test';run.id='run-test'
-        with patch('providers.CursorClient.launch_bridge',return_value=client):
+        with patch('vivegam_ai.adapters.providers.CursorClient.launch_bridge',return_value=client):
             result=p.cursor_task('Review repository','https://github.com/org/repo','main')
             p.close()
         opts=client.agents.create.call_args.args[0]

@@ -1,0 +1,175 @@
+{
+  "reportKinds": [
+    {
+      "id": "readiness",
+      "label": "Pre-test readiness",
+      "description": "Missing inputs, evidence gaps and recommended first checks."
+    },
+    {
+      "id": "performance",
+      "label": "Performance risk",
+      "description": "Workload, latency budgets, resource assumptions and capacity hypotheses."
+    },
+    {
+      "id": "observability",
+      "label": "Observability & APM coverage",
+      "description": "Signal coverage, trace boundaries and diagnostic readiness."
+    },
+    {
+      "id": "resilience",
+      "label": "Resilience & dependency risk",
+      "description": "Failure modes, recovery objectives and safe experiment prerequisites."
+    },
+    {
+      "id": "ux",
+      "label": "UI / UX review plan",
+      "description": "Critical journeys, browser coverage and usability evidence gaps."
+    },
+    {
+      "id": "accessibility",
+      "label": "Accessibility review plan",
+      "description": "Automated and manual checks, assistive technology coverage and evidence."
+    },
+    {
+      "id": "release",
+      "label": "Release decision brief",
+      "description": "Cross-discipline risks and remaining validation before a release decision."
+    }
+  ],
+  "inputs": [
+    {
+      "key": "objective",
+      "label": "Application purpose & critical journeys",
+      "help": "Who uses it, what must work, and which journeys affect the business.",
+      "applies": [
+        "all"
+      ],
+      "suggestion": "Identify critical user journeys and owners before selecting test scenarios."
+    },
+    {
+      "key": "environment",
+      "label": "Environment & architecture context",
+      "help": "Environment parity, deployment topology, service dependencies and ownership. Do not enter credentials.",
+      "applies": [
+        "all"
+      ],
+      "suggestion": "Document environment differences and dependency owners; attach a repository map."
+    },
+    {
+      "key": "workload",
+      "label": "Workload & data assumptions",
+      "help": "Peak concurrency or request rate, traffic mix, growth and representative data volumes.",
+      "applies": [
+        "performance",
+        "release",
+        "readiness"
+      ],
+      "suggestion": "Collect production traffic distribution and representative data volumes to define a workload."
+    },
+    {
+      "key": "slos",
+      "label": "Service objectives & acceptance criteria",
+      "help": "Latency percentiles, error budget, availability and business acceptance thresholds.",
+      "applies": [
+        "all"
+      ],
+      "suggestion": "Agree measurable pass/fail criteria with service owners; avoid arbitrary thresholds."
+    },
+    {
+      "key": "telemetry",
+      "label": "Metrics, logs & tracing coverage",
+      "help": "Available dashboards, correlation IDs, dependency traces, sampling and alert ownership.",
+      "applies": [
+        "observability",
+        "performance",
+        "resilience",
+        "release",
+        "readiness"
+      ],
+      "suggestion": "Confirm metrics, structured logs and distributed traces can isolate a failing request before running load."
+    },
+    {
+      "key": "recovery",
+      "label": "Recovery & failure controls",
+      "help": "Timeouts, retries, idempotency, circuit breakers, RTO/RPO, blast radius, stop criteria and rollback.",
+      "applies": [
+        "resilience",
+        "release",
+        "readiness"
+      ],
+      "suggestion": "Define safe failure boundaries, abort conditions and recovery targets before chaos experiments."
+    },
+    {
+      "key": "experience",
+      "label": "Browser & accessibility requirements",
+      "help": "Supported devices/browsers, critical journeys, accessibility target and manual assistive-technology coverage.",
+      "applies": [
+        "ux",
+        "accessibility",
+        "release",
+        "readiness"
+      ],
+      "suggestion": "Specify supported browsers, devices and accessibility target; include keyboard and screen-reader checks."
+    },
+    {
+      "key": "baseline",
+      "label": "Existing evidence & incidents",
+      "help": "Baseline observations, known incidents, sanitized tool summaries and evidence references.",
+      "applies": [
+        "all"
+      ],
+      "suggestion": "Attach a dated baseline or incident summary. Without observations, conclusions remain planning hypotheses."
+    },
+    {
+      "key": "constraints",
+      "label": "Scope, safety & ownership",
+      "help": "Authorized environment, excluded endpoints, maintenance window, data handling and responsible owners.",
+      "applies": [
+        "all"
+      ],
+      "suggestion": "Confirm scope, responsible owners and execution authorization before using external test tools."
+    }
+  ],
+  "investigations": [
+    {
+      "id": "performance",
+      "title": "Validate workload and latency budgets",
+      "tools": "k6 / Apache JMeter",
+      "question": "Which journeys or dependencies could constrain throughput at peak traffic?",
+      "requiredEvidence": "Representative traffic mix, data volumes, percentile objectives, per-route timings and resource saturation.",
+      "suggestion": "Review expensive journeys and dependency fan-out with service owners; design a baseline before increasing load."
+    },
+    {
+      "id": "observability",
+      "title": "Check diagnostic coverage before execution",
+      "tools": "Prometheus / Grafana / OpenTelemetry / Jaeger",
+      "question": "Can a slow or failed request be traced across service boundaries?",
+      "requiredEvidence": "Correlation IDs, trace sampling, dependency spans, latency/error metrics, dashboards and alert ownership.",
+      "suggestion": "Walk through one critical request and confirm each service emits enough signals to isolate its failure."
+    },
+    {
+      "id": "resilience",
+      "title": "Review recovery and failure propagation",
+      "tools": "LitmusChaos / OpenTelemetry / Jaeger",
+      "question": "What happens when a dependency is unavailable or a request is repeated?",
+      "requiredEvidence": "Timeout/retry policy, idempotency, failover assumptions, RTO/RPO, blast radius, rollback and abort conditions.",
+      "suggestion": "Document expected failure behavior before designing an authorized, bounded chaos experiment."
+    },
+    {
+      "id": "ux",
+      "title": "Review critical journey experience",
+      "tools": "Playwright / Lighthouse",
+      "question": "Which navigation, rendering or browser conditions can block the user journey?",
+      "requiredEvidence": "Journey steps, supported browsers/devices, design acceptance criteria, screenshots and navigation/rendering observations.",
+      "suggestion": "Prepare critical-journey checks and a consistent device profile; Lighthouse scores alone do not prove usability."
+    },
+    {
+      "id": "accessibility",
+      "title": "Plan automated and manual accessibility checks",
+      "tools": "axe-core / Playwright",
+      "question": "Can keyboard and assistive-technology users complete the critical journey?",
+      "requiredEvidence": "Accessibility target, focus order, labels, contrast, keyboard interactions and screen-reader observations.",
+      "suggestion": "Combine axe findings with manual keyboard and screen-reader review; automated checks cannot certify conformance."
+    }
+  ]
+}

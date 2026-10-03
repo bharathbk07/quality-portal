@@ -1,0 +1,28 @@
+import type { Metadata } from "next";
+import "./globals.css";
+import { QueryProvider } from "@/shared/query-provider";
+import { number } from "../../../backend/shared/config.mjs";
+
+export const metadata: Metadata = {
+  title: "Vivegam | Quality Lab",
+  description: "A GenAI-assisted workspace for non-functional testing with open-source tools.",
+  other: {
+    "codex-preview": "development",
+  },
+  icons: {
+    icon: "/favicon.svg",
+    shortcut: "/favicon.svg",
+  },
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en">
+      <body className="antialiased"><QueryProvider timeoutMs={number("public", "api_timeout_ms")}>{children}</QueryProvider></body>
+    </html>
+  );
+}

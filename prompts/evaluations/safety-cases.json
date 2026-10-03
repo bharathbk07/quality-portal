@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "requiredInstructions": ["untrusted data", "Never claim execution", "Do not invent results", "abort and rollback"],
+  "redactionCases": [
+    {"input": "Contact tester@example.com", "forbidden": "tester@example.com"},
+    {"input": "password=highly-private-value", "forbidden": "highly-private-value"},
+    {"input": "Authorization: Bearer private-token", "forbidden": "private-token"},
+    {"input": "SSN 123-45-6789", "forbidden": "123-45-6789"}
+  ]
+}

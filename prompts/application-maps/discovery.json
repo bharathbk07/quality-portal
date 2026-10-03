@@ -1,0 +1,156 @@
+{
+  "languages": {
+    ".py": "Python",
+    ".java": "Java",
+    ".kt": "Kotlin",
+    ".ts": "TypeScript",
+    ".tsx": "TypeScript",
+    ".js": "JavaScript",
+    ".jsx": "JavaScript",
+    ".mjs": "JavaScript",
+    ".cjs": "JavaScript",
+    ".go": "Go",
+    ".rs": "Rust",
+    ".cs": "C#",
+    ".rb": "Ruby",
+    ".php": "PHP",
+    ".kts": "Kotlin",
+    ".scala": "Scala",
+    ".fs": "F#",
+    ".cbl": "COBOL",
+    ".cob": "COBOL",
+    ".cpy": "COBOL copybook",
+    ".pli": "PL/I",
+    ".pl1": "PL/I",
+    ".jcl": "JCL",
+    ".rex": "REXX",
+    ".rexx": "REXX",
+    ".sql": "SQL",
+    ".c": "C",
+    ".h": "C/C++ header",
+    ".cpp": "C++",
+    ".hpp": "C++ header",
+    ".swift": "Swift",
+    ".abap": "ABAP",
+    ".rpg": "RPG",
+    ".rpgle": "RPGLE",
+    ".f90": "Fortran",
+    ".vb": "Visual Basic"
+  },
+  "runtimes": [
+    {
+      "pattern": "spring-boot",
+      "name": "Spring Boot"
+    },
+    {
+      "pattern": "fastapi",
+      "name": "FastAPI"
+    },
+    {
+      "pattern": "django",
+      "name": "Django"
+    },
+    {
+      "pattern": "flask",
+      "name": "Flask"
+    },
+    {
+      "pattern": "next",
+      "name": "Next.js"
+    },
+    {
+      "pattern": "fastify",
+      "name": "Fastify"
+    },
+    {
+      "pattern": "express",
+      "name": "Express"
+    },
+    {
+      "pattern": "aspnet",
+      "name": "ASP.NET"
+    },
+    {
+      "pattern": "rails",
+      "name": "Rails"
+    },
+    {
+      "pattern": "langchain",
+      "name": "LangChain"
+    },
+    {
+      "pattern": "llama-index",
+      "name": "LlamaIndex"
+    },
+    {
+      "pattern": "langgraph",
+      "name": "LangGraph"
+    },
+    {
+      "pattern": "torch",
+      "name": "PyTorch"
+    },
+    {
+      "pattern": "transformers",
+      "name": "Hugging Face Transformers"
+    },
+    {
+      "pattern": "tensorflow",
+      "name": "TensorFlow"
+    },
+    {
+      "pattern": "vllm",
+      "name": "vLLM"
+    },
+    {
+      "pattern": "google-genai",
+      "name": "Google GenAI SDK"
+    },
+    {
+      "pattern": "anthropic",
+      "name": "Anthropic SDK"
+    },
+    {
+      "pattern": "openai",
+      "name": "OpenAI SDK"
+    }
+  ],
+  "cachePatterns": [
+    {
+      "pattern": "@Cacheable",
+      "name": "Spring method cache",
+      "mechanism": "annotation"
+    },
+    {
+      "pattern": "@lru_cache",
+      "name": "Python in-process LRU",
+      "mechanism": "decorator"
+    },
+    {
+      "pattern": "@cache(",
+      "name": "Python in-process cache",
+      "mechanism": "decorator"
+    },
+    {
+      "pattern": "redis.Redis(",
+      "name": "Redis client",
+      "mechanism": "client construction"
+    },
+    {
+      "pattern": "Redis.from_url(",
+      "name": "Redis client",
+      "mechanism": "client construction"
+    },
+    {
+      "pattern": "createClient(",
+      "name": "Cache client candidate",
+      "mechanism": "client construction; verify import"
+    }
+  ],
+  "layout": {
+    "nodeWidth": 240,
+    "nodeHeight": 110,
+    "groupPadding": 36,
+    "spacing": 70
+  }
+}

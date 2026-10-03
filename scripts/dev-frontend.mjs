@@ -1,2 +1,2 @@
-import {spawn} from 'node:child_process';import {value} from '../services/shared/config.mjs';
-const child=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--webpack','--hostname',value('services','frontend_dev_host'),'--port',value('services','frontend_dev_port')],{stdio:'inherit',env:{...process.env,NEXT_TELEMETRY_DISABLED:'1'}});for(const s of ['SIGINT','SIGTERM'])process.on(s,()=>child.kill(s));child.on('exit',code=>process.exit(code??0));
+import {spawn} from 'node:child_process';import {value} from '../backend/shared/config.mjs';
+const child=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','frontend','--webpack','--hostname',value('services','frontend_dev_host'),'--port',value('services','frontend_dev_port')],{stdio:'inherit',env:{...process.env,NEXT_TELEMETRY_DISABLED:'1'}});for(const s of ['SIGINT','SIGTERM'])process.on(s,()=>child.kill(s));child.on('exit',code=>process.exit(code??0));

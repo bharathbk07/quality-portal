@@ -1,0 +1,33 @@
+flowchart LR
+  n1cdad0cb942bd65e["accounts-db (database)"]
+  n90a4b25228ac492a["balancereader (service)"]
+  n86747ea11fb387ea["contacts (service)"]
+  n6ae862a62d3bf3e6["frontend (frontend)"]
+  n26a8af8a7a19879a["ledger-db (database)"]
+  n55828fb55d8c75f5["ledgerwriter (service)"]
+  n70a8db9b8fd94025["loadgenerator (service)"]
+  n2c50be8fce24a6af["transactionhistory (service)"]
+  n906a31c6b84e317d["userservice (service)"]
+  n90a4b25228ac492a -->|"configured endpoint"| n26a8af8a7a19879a
+  n86747ea11fb387ea -->|"configured endpoint"| n1cdad0cb942bd65e
+  n6ae862a62d3bf3e6 -->|"configured endpoint"| n55828fb55d8c75f5
+  n6ae862a62d3bf3e6 -->|"configured endpoint"| n90a4b25228ac492a
+  n6ae862a62d3bf3e6 -->|"configured endpoint"| n2c50be8fce24a6af
+  n6ae862a62d3bf3e6 -->|"configured endpoint"| n86747ea11fb387ea
+  n6ae862a62d3bf3e6 -->|"configured endpoint"| n906a31c6b84e317d
+  n55828fb55d8c75f5 -->|"configured endpoint"| n90a4b25228ac492a
+  n55828fb55d8c75f5 -->|"configured endpoint"| n26a8af8a7a19879a
+  n70a8db9b8fd94025 -->|"configured endpoint"| n6ae862a62d3bf3e6
+  n2c50be8fce24a6af -->|"configured endpoint"| n26a8af8a7a19879a
+  n906a31c6b84e317d -->|"configured endpoint"| n1cdad0cb942bd65e
+  class n6ae862a62d3bf3e6 frontend
+  class n90a4b25228ac492a,n86747ea11fb387ea,n55828fb55d8c75f5,n70a8db9b8fd94025,n2c50be8fce24a6af,n906a31c6b84e317d service
+  class n1cdad0cb942bd65e,n26a8af8a7a19879a database
+  classDef frontend fill:#e8efff,stroke:#647dae,color:#24354e
+  classDef gateway fill:#e1f1ea,stroke:#478972,color:#214537
+  classDef service fill:#edf4f1,stroke:#6b9986,color:#244437
+  classDef database fill:#fff0df,stroke:#b0804b,color:#5f4023
+  classDef cache fill:#f8e9ec,stroke:#b77184,color:#58313c
+  classDef queue fill:#f2eafa,stroke:#9174ac,color:#49365d
+  classDef package fill:#f1f3f6,stroke:#8a96a5,color:#354351
+  classDef external fill:#f7f7f7,stroke:#999,color:#444

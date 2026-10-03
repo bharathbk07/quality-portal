@@ -12,3 +12,9 @@ artifacts
 
 **/.venv
 **/__pycache__
+**/node_modules
+**/.next
+**/.mypy_cache
+**/.pytest_cache
+**/.ruff_cache
+deployment/legacy-sites

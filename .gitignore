@@ -47,3 +47,12 @@ next-env.d.ts
 
 **/.venv/
 **/__pycache__/
+
+# Layer-local development output
+**/node_modules/
+**/.next/
+**/*.tsbuildinfo
+**/.mypy_cache/
+**/.pytest_cache/
+**/.ruff_cache/
+deployment/legacy-sites/.runtime/
