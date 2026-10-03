@@ -1,0 +1,35 @@
+http:
+  routers:
+    api:
+      rule: PathPrefix(`/api`)
+      entryPoints: [web]
+      service: bff
+      middlewares: [headers, limits]
+      priority: 100
+    frontend:
+      rule: PathPrefix(`/`)
+      entryPoints: [web]
+      service: frontend
+      middlewares: [headers]
+  services:
+    bff:
+      loadBalancer:
+        servers:
+          - url: http://bff:4001
+    frontend:
+      loadBalancer:
+        servers:
+          - url: http://frontend:3000
+  middlewares:
+    headers:
+      headers:
+        contentTypeNosniff: true
+        frameDeny: true
+        referrerPolicy: strict-origin-when-cross-origin
+        customResponseHeaders:
+          Server: ""
+          X-Powered-By: ""
+    limits:
+      buffering:
+        maxRequestBodyBytes: 8000000
+      # Authentication and request rate limits are enforced by the BFF.

@@ -1,0 +1,6 @@
+global:
+  scrape_interval: 15s
+scrape_configs:
+  - job_name: vivegam
+    static_configs:
+      - targets: ['bff:4001', 'core:4002', 'integration:4003']

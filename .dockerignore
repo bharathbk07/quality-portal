@@ -1,0 +1,14 @@
+node_modules
+.next
+dist
+.git
+.env
+.env.*
+!.env.example
+.sites-runtime
+.wrangler
+*.tsbuildinfo
+artifacts
+
+**/.venv
+**/__pycache__
